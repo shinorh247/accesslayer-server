@@ -127,6 +127,11 @@ import {
    getPlatformPaymentAssetDistribution,
 } from './key-analytics.service';
 import {
+   getKeySnapshots,
+   KeySnapshotKeyNotFoundError,
+} from './key-snapshots.service';
+import { SNAPSHOT_RANGES } from '../../constants/redis.constants';
+import {
    createKeyExportJob,
    ExportDownloadTokenError,
    keyExportQuerySchema,
@@ -661,6 +666,55 @@ router.get('/:keyId/holders/leaderboard', httpGetHolderLeaderboard);
  * Rank and balance of a single wallet under the leaderboard ordering (#1013).
  */
 router.get('/:keyId/holders/:wallet/rank', httpGetHolderRank);
+
+/**
+ * GET /api/v1/keys/:keyId/snapshots?range=7d|30d|90d|all
+ *
+ * Daily historical performance points indexed from SnapshotTaken events
+ * (#1112): date, price, volume, holder_count and market_cap, oldest first.
+ * `range` filters backwards from the current UTC date; the default is 30d.
+ * Keys with no snapshots yet return an empty array.
+ *
+ * Cached for 5 minutes per key and range; the indexer invalidates the cache
+ * as soon as a new SnapshotTaken event is indexed.
+ *
+ * Responses:
+ *   200 — array of daily snapshots
+ *   400 — invalid range
+ *   404 — key not found
+ */
+const keySnapshotsQuerySchema = z.object({
+   range: z.enum(SNAPSHOT_RANGES).optional().default('30d'),
+});
+
+router.get('/:keyId/snapshots', async (req, res, next) => {
+   const parsed = keySnapshotsQuerySchema.safeParse(req.query);
+   if (!parsed.success) {
+      sendValidationError(
+         res,
+         'Invalid range. Must be one of 7d, 30d, 90d, all',
+         zodIssuesToDetails(parsed.error.issues)
+      );
+      return;
+   }
+
+   try {
+      sendSuccess(
+         res,
+         await getKeySnapshots(String(req.params.keyId), parsed.data.range)
+      );
+   } catch (error) {
+      if (error instanceof KeySnapshotKeyNotFoundError) {
+         sendNotFound(res, 'Key');
+         return;
+      }
+      logger.error(
+         { error, keyId: req.params.keyId },
+         'GET /keys/:keyId/snapshots failed'
+      );
+      next(error);
+   }
+});
 
 /**
  * GET /api/v1/keys/:keyId/circuit-breaker?limit=&offset=

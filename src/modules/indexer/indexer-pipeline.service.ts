@@ -377,6 +377,21 @@ export async function processIndexerEvents(
       await processTwapUpdatedEvents(twapEvents);
    }
 
+   // SnapshotTaken (#1112). Awaited before the cursor moves for the same
+   // reason as TWAP: a failure must leave the batch redelivered so the daily
+   // snapshot history has no gaps.
+   const snapshotEvents = events.filter(
+      event =>
+         event.eventType === 'SNAPSHOT_TAKEN' ||
+         event.eventType === 'SnapshotTaken'
+   );
+   if (snapshotEvents.length > 0) {
+      const { processSnapshotTakenEvents } = await import(
+         './snapshot-taken-indexer.service'
+      );
+      await processSnapshotTakenEvents(snapshotEvents);
+   }
+
    // Governance lifecycle events (PROPOSAL_CREATED / VOTE_CAST /
    // PROPOSAL_EXECUTED). Processed in order before the cursor moves so a
    // batch that creates a proposal and records its votes stays consistent.

@@ -651,6 +651,56 @@ serialised as strings. Response is cached in Redis for 10 seconds.
    - `400 Bad Request` — `quantity` is missing, non-integer, ≤ 0, or > 1 000 000
    - `404 Not Found` — key does not exist
 
+### GET /keys/:keyId/snapshots
+
+Returns the key's indexed daily performance history — one point per day, oldest
+first — for the historical charts. Points are indexed from `SnapshotTaken`
+contract events with `price`, `volume`, `holder_count` and `market_cap` in
+stroops (serialised as strings). Resolves `keyId` by database id **or** handle.
+
+`range` filters backwards from the current UTC date, inclusive of today:
+
+| `range` | Window                                  |
+| ------- | --------------------------------------- |
+| `7d`    | today and the previous 6 days           |
+| `30d`   | today and the previous 29 days          |
+| `90d`   | today and the previous 89 days          |
+| `all`   | every indexed snapshot (no lower bound) |
+
+Defaults to `30d`. Keys with no snapshots yet return `200` with an empty array.
+Responses are cached for 5 minutes; the indexer invalidates the key's cache as
+soon as a new `SnapshotTaken` event is indexed.
+
+- **Auth:** None
+- **Query Params:** `range` (optional) — `7d` | `30d` | `90d` | `all`
+- **Response:** `200 OK`
+
+```json
+{
+   "success": true,
+   "data": [
+      {
+         "date": "2026-10-19",
+         "price": "12500000",
+         "volume": "50000000",
+         "holder_count": 42,
+         "market_cap": "900000000"
+      },
+      {
+         "date": "2026-10-20",
+         "price": "13000000",
+         "volume": "61000000",
+         "holder_count": 44,
+         "market_cap": "940000000"
+      }
+   ]
+}
+```
+
+- **Error Responses:**
+   - `400 Bad Request` — unsupported `range`
+   - `404 Not Found` — key does not exist
+
 ---
 
 ## Common Headers

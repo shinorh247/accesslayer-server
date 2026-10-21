@@ -44,3 +44,27 @@ export const twapSnapshotCacheKey = (
    keyId: string,
    window: TwapWindow
 ): string => `twap:snapshot:${keyId}:${window}`;
+
+// ── Key snapshot history (#1112) ────────────────────────────────
+// GET /keys/:key_id/snapshots serves indexed daily SnapshotTaken points.
+// Responses are cached for 5 minutes and invalidated per key by the indexer
+// whenever a new SnapshotTaken event lands.
+export const SNAPSHOT_RANGES = ['7d', '30d', '90d', 'all'] as const;
+export type SnapshotRange = (typeof SNAPSHOT_RANGES)[number];
+
+export const SNAPSHOT_CACHE_TTL_SECONDS = 5 * 60;
+
+/** Number of days a bounded range covers, including today. */
+export const SNAPSHOT_RANGE_DAYS: Record<
+   Exclude<SnapshotRange, 'all'>,
+   number
+> = {
+   '7d': 7,
+   '30d': 30,
+   '90d': 90,
+};
+
+export const keySnapshotsCacheKey = (
+   keyId: string,
+   range: SnapshotRange
+): string => `key:snapshots:${keyId}:${range}`;

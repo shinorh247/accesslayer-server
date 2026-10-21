@@ -1,0 +1,40 @@
+// prisma/schema/key-snapshot.prisma
+// Daily historical performance snapshots indexed from SnapshotTaken events (#1112).
+//
+// - One row per (key, day): a later SnapshotTaken event for the same day
+//   replaces the earlier one, so re-orgs and intraday re-snapshots leave a
+//   single, newest daily point.
+// - Metrics are stored in stroops as BIGINT to avoid precision loss.
+// - `creatorId` is intentionally NOT a foreign key, matching twap_snapshots:
+//   a SnapshotTaken event can arrive before CREATOR_REGISTERED has been
+//   indexed, and a FK would reject it and leave a permanent gap in history.
+// - Powers GET /keys/:key_id/snapshots?range=7d|30d|90d|all, cached for five
+//   minutes and invalidated per key by the indexer on every new event.
+
+model KeySnapshot {
+  id           String   @id @default(cuid())
+  /** Key ID (CreatorProfile.id) the snapshot belongs to. */
+  creatorId    String
+  /** UTC calendar day this snapshot describes (one row per key per day). */
+  snapshotDate DateTime @db.Date
+  /** Latest key price in stroops. */
+  price        BigInt
+  /** Trade volume for the day in stroops. */
+  volume       BigInt   @default(0)
+  /** Number of wallets holding the key. */
+  holderCount  Int      @default(0)
+  /** Circulating supply multiplied by price, in stroops. */
+  marketCap    BigInt   @default(0)
+  /** Ledger the event was emitted in; breaks same-day ordering. */
+  ledger       Int
+  /** Event timestamp from the contract (before day normalisation). */
+  snapshotAt   DateTime
+  txHash       String
+  eventIndex   Int
+  indexedAt    DateTime @default(now())
+
+  // The unique pair is both the idempotency guard for same-day events and
+  // the covering index for per-key date-range reads.
+  @@unique([creatorId, snapshotDate])
+  @@map("key_snapshots")
+}
